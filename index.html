@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Formulario de contacto</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding: 20px; background:#f7f7f9; color:#111; }
+    .container{ max-width:600px;margin:0 auto;background:#fff;padding:20px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.06); }
+    h1{ margin-top:0;font-size:20px }
+    label{ display:block;margin-top:12px;font-weight:600;font-size:14px }
+    input[type="text"], input[type="email"], select, textarea {
+      width:100%; padding:10px; margin-top:6px; border:1px solid #d0d7de; border-radius:6px; font-size:14px; box-sizing:border-box;
+    }
+    textarea{ min-height:120px; resize:vertical }
+    .row { display:flex; gap:12px; }
+    .row > * { flex:1 }
+    button {
+      margin-top:14px; padding:10px 16px; border:none; border-radius:8px;
+      background:#0b5fff; color:white; font-weight:700; cursor:pointer; font-size:15px;
+    }
+    button:disabled { opacity:0.6; cursor:default }
+    .msg { margin-top:12px; padding:10px; border-radius:6px; display:none; }
+    .msg.success { background:#e6ffed; color:#046a22; border:1px solid #b6f0c6; display:block; }
+    .msg.error { background:#ffeef0; color:#61000b; border:1px solid #ffccd5; display:block; }
+    .small { font-size:13px; color:#555; margin-top:6px }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Contacto</h1>
+    <form id="contactForm" novalidate>
+      <label for="nombre">Nombre</label>
+      <input id="nombre" name="nombre" type="text" required placeholder="Juan Pérez" />
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required placeholder="juan@email.com" />
+
+      <div class="row">
+        <div>
+          <label for="tipo">Tipo</label>
+          <select id="tipo" name="tipo" required>
+            <option value="normal">normal</option>
+            <option value="urgente">urgente</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="mensaje">Mensaje</label>
+      <textarea id="mensaje" name="mensaje" required placeholder="Escribe tu mensaje aquí..."></textarea>
+
+      <button id="submitBtn" type="submit">Enviar</button>
+
+      <div id="responseMsg" class="msg" role="status" aria-live="polite"></div>
+      <div class="small">Los datos se enviarán en formato JSON vía POST al endpoint configurado en el script.</div>
+    </form>
+  </div>
+
+  <script>
+    (function(){
+      const ENDPOINT = "https://m4xi.app.n8n.cloud/webhook/formulario-contacto";
+
+      const form = document.getElementById('contactForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const responseMsg = document.getElementById('responseMsg');
+
+      function showMessage(text, type='success'){
+        responseMsg.textContent = text;
+        responseMsg.className = 'msg ' + (type === 'success' ? 'success' : 'error');
+        responseMsg.style.display = 'block';
+      }
+
+      function showError(text){
+        showMessage(text, 'error');
+      }
+
+      function clearMessage(){
+        responseMsg.style.display = 'none';
+        responseMsg.textContent = '';
+        responseMsg.className = 'msg';
+      }
+
+      // Validación sencilla del email
+      function isValidEmail(email){
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      }
+
+      form.addEventListener('submit', function(ev){
+        ev.preventDefault();
+        clearMessage();
+
+        const nombre = form.nombre.value.trim();
+        const email = form.email.value.trim();
+        const telefono = form.telefono.value.trim();
+        const tipo = form.tipo.value;
+        const mensaje = form.mensaje.value.trim();
+
+        // Validaciones básicas
+        if (!nombre) { showError('Por favor ingresa tu nombre.'); return; }
+        if (!email || !isValidEmail(email)) { showError('Por favor ingresa un email válido.'); return; }
+        if (!mensaje) { showError('Por favor escribe un mensaje.'); return; }
+
+        const payload = {
+          nombre,
+          email,
+          telefono,
+          tipo,
+          mensaje
+        };
+
+        // Desactivar botón mientras se envía
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Enviando...';
+
+        fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        })
+        .then(async res => {
+          let text;
+          try { text = await res.text(); } catch(e){ text = ''; }
+
+          // Si el servidor responde con JSON, se puede parsear:
+          let data = null;
+          try { data = JSON.parse(text); } catch(e) { /* no es JSON */ }
+
+          if (res.ok) {
+            // Mostrar mensaje de éxito. Si el backend devolvió "message" lo mostramos.
+            const successText = (data && (data.message || data.msg)) || 'Formulario enviado correctamente.';
+            showMessage(successText, 'success');
+            form.reset();
+          } else {
+            const errorText = (data && (data.error || data.message || data.msg)) || `Error en el envío (${res.status} ${res.statusText})`;
+            showError(errorText);
+          }
+        })
+        .catch(err => {
+          showError('No se pudo conectar con el servidor. Verifica tu dominio/IP y CORS. ' + (err && err.message ? err.message : ''));
+        })
+        .finally(() => {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Enviar';
+        });
+      });
+
+      // Ejemplo de estructura enviada (comentario para desarrolladores)
+      // {
+      //  "nombre": "Juan Pérez",
+      //  "email": "juan@email.com",
+      //  "telefono": "123456789",
+      //  "tipo": "urgente",
+      //  "mensaje": "Necesito ayuda urgente"
+      // }
+    })();
+  </script>
+</body>
+</html>
